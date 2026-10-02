@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="ARTES Cloud Desktop — Windows, macOS ve Linux kurulum dosyalarını indirin."
+    />
+    <title>ARTES Cloud Desktop — İndir</title>
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+
+    <main class="shell">
+      <header class="brand">
+        <img class="brand__mark" src="assets/icon.png" alt="" width="64" height="64" />
+        <div class="brand__text">
+          <p class="brand__eyebrow">Brassco Artes</p>
+          <h1 class="brand__name">ARTES Cloud Desktop</h1>
+        </div>
+      </header>
+
+      <p class="lede">
+        Otel masaüstü uygulamasının güncel kurulum dosyasını indirin. Kurulu
+        sürümler güncellemeleri otomatik alır.
+      </p>
+
+      <section class="hero-cta" aria-live="polite">
+        <div id="status" class="status status--loading">Sürüm bilgisi yükleniyor…</div>
+        <div id="primary" class="primary" hidden></div>
+        <p id="meta" class="meta" hidden></p>
+      </section>
+
+      <section class="platforms" aria-labelledby="platforms-heading">
+        <h2 id="platforms-heading" class="section-title">Tüm platformlar</h2>
+        <ul id="platform-list" class="platform-list"></ul>
+      </section>
+
+      <section class="notes" aria-labelledby="notes-heading">
+        <h2 id="notes-heading" class="section-title">Kurulum notları</h2>
+        <ul class="notes-list">
+          <li>
+            <strong>Windows:</strong> SmartScreen uyarısı çıkabilir — “Daha fazla
+            bilgi” → “Yine de çalıştır”.
+          </li>
+          <li>
+            <strong>macOS:</strong> Gatekeeper engelleyebilir — Finder’da
+            uygulamaya sağ tık → Aç (ilk açılışta).
+          </li>
+          <li>
+            <strong>Linux:</strong> AppImage’i çalıştırılabilir yapın
+            (<code>chmod +x</code>) veya <code>.deb</code> ile kurun.
+          </li>
+          <li>
+            GitHub’daki <em>Source code</em> arşivleri boştur; yalnızca aşağıdaki
+            kurulum dosyalarını kullanın.
+          </li>
+        </ul>
+      </section>
+
+      <footer class="footer">
+        <a
+          id="releases-link"
+          href="https://github.com/brassco-artes/molainn-desktop-releases/releases"
+          >GitHub Releases</a
+        >
+        <span class="footer__sep" aria-hidden="true">·</span>
+        <span>Brassco Artes</span>
+      </footer>
+    </main>
+
+    <script>
+      (function () {
+        const REPO = 'brassco-artes/molainn-desktop-releases';
+        const API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
+        const RELEASES_URL =
+          'https://github.com/' + REPO + '/releases';
+
+        const statusEl = document.getElementById('status');
+        const primaryEl = document.getElementById('primary');
+        const metaEl = document.getElementById('meta');
+        const listEl = document.getElementById('platform-list');
+
+        function formatBytes(n) {
+          if (!n || n <= 0) return '';
+          const u = ['B', 'KB', 'MB', 'GB'];
+          let i = 0;
+          let v = n;
+          while (v >= 1024 && i < u.length - 1) {
+            v /= 1024;
+            i++;
+          }
+          return v.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
+        }
+
+        function formatDate(iso) {
+          try {
+            return new Intl.DateTimeFormat('tr-TR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            }).format(new Date(iso));
+          } catch (_) {
+            return iso;
+          }
+        }
+
+        function detectPlatform() {
+          const ua = navigator.userAgent || '';
+          const platform = (navigator.userAgentData && navigator.userAgentData.platform) ||
+            navigator.platform ||
+            '';
+          const p = (platform + ' ' + ua).toLowerCase();
+
+          let os = 'unknown';
+          if (/windows|win32|win64/.test(p)) os = 'windows';
+          else if (/mac|darwin|iphone|ipad/.test(p)) os = 'mac';
+          else if (/linux|ubuntu|fedora|debian|cros/.test(p)) os = 'linux';
+
+          let arch = 'x64';
+          const uaData = navigator.userAgentData;
+          if (uaData && typeof uaData.getHighEntropyValues === 'function') {
+            // Resolved async below; sync guess first
+          }
+          if (/arm64|aarch64|apple silicon/.test(p) || (os === 'mac' && /mac os x 1[1-9]|mac os x [2-9]/.test(p) === false && navigator.maxTouchPoints > 1)) {
+            // weak signals; prefer arm64 on Apple Silicon via userAgentData when available
+          }
+          if (/\b(arm64|aarch64)\b/.test(p)) arch = 'arm64';
+          else if (/\b(x86_64|win64|wow64|amd64|x64)\b/.test(p)) arch = 'x64';
+          else if (os === 'mac') {
+            // Modern Macs are mostly arm64; Intel still x64. Default arm64 for mac
+            // when UA does not say Intel.
+            arch = /intel/i.test(ua) ? 'x64' : 'arm64';
+          }
+
+          return { os: os, arch: arch };
+        }
+
+        function classifyAsset(name) {
+          const n = name.toLowerCase();
+          if (/^latest/i.test(n) || /\.ya?ml$/i.test(n)) return null;
+          if (/\.blockmap$/i.test(n)) return null;
+          if (/source|src\.|tar\.gz|\.zip$/i.test(n) && !/\.(exe|dmg|appimage|deb)$/i.test(n)) {
+            return null;
+          }
+
+          if (/-win-.*\.exe$/i.test(n) || (/\.exe$/i.test(n) && /win/i.test(n))) {
+            return { os: 'windows', arch: /arm64/i.test(n) ? 'arm64' : 'x64', label: 'Windows', kind: 'Installer (.exe)' };
+          }
+          if (/-mac-arm64\.dmg$/i.test(n)) {
+            return { os: 'mac', arch: 'arm64', label: 'macOS', kind: 'Apple Silicon (.dmg)' };
+          }
+          if (/-mac-x64\.dmg$/i.test(n) || /-mac-x86_64\.dmg$/i.test(n)) {
+            return { os: 'mac', arch: 'x64', label: 'macOS', kind: 'Intel (.dmg)' };
+          }
+          if (/\.appimage$/i.test(n)) {
+            return { os: 'linux', arch: /arm64|aarch64/i.test(n) ? 'arm64' : 'x64', label: 'Linux', kind: 'AppImage' };
+          }
+          if (/\.deb$/i.test(n)) {
+            return { os: 'linux', arch: /arm64|aarch64/i.test(n) ? 'arm64' : 'x64', label: 'Linux', kind: 'Debian (.deb)' };
+          }
+          return null;
+        }
+
+        function pickPrimary(assets, detected) {
+          const sameOs = assets.filter(function (a) {
+            return a.meta.os === detected.os;
+          });
+          if (!sameOs.length) return null;
+
+          if (detected.os === 'mac') {
+            const exact = sameOs.find(function (a) {
+              return a.meta.arch === detected.arch;
+            });
+            if (exact) return exact;
+            return sameOs[0];
+          }
+
+          if (detected.os === 'linux') {
+            const appImage = sameOs.find(function (a) {
+              return /\.appimage$/i.test(a.name);
+            });
+            if (appImage) return appImage;
+          }
+
+          const exact = sameOs.find(function (a) {
+            return a.meta.arch === detected.arch;
+          });
+          return exact || sameOs[0];
+        }
+
+        function platformLabel(os, arch) {
+          if (os === 'windows') return 'Windows';
+          if (os === 'mac') return arch === 'arm64' ? 'macOS (Apple Silicon)' : 'macOS (Intel)';
+          if (os === 'linux') return 'Linux';
+          return 'bilgisayarınız';
+        }
+
+        function setError(message) {
+          statusEl.className = 'status status--error';
+          statusEl.innerHTML =
+            message +
+            ' <a href="' +
+            RELEASES_URL +
+            '">GitHub Releases sayfasına gidin</a>.';
+          primaryEl.hidden = true;
+          metaEl.hidden = true;
+        }
+
+        function render(release) {
+          const assets = (release.assets || [])
+            .map(function (asset) {
+              const meta = classifyAsset(asset.name);
+              if (!meta) return null;
+              return {
+                name: asset.name,
+                url: asset.browser_download_url,
+                size: asset.size,
+                meta: meta,
+              };
+            })
+            .filter(Boolean);
+
+          if (!assets.length) {
+            setError('Bu sürümde henüz kurulum dosyası yok.');
+            listEl.innerHTML = '';
+            return;
+          }
+
+          const version = release.tag_name || release.name || '';
+          const published = release.published_at || release.created_at;
+          statusEl.className = 'status';
+          statusEl.textContent = version ? 'Sürüm ' + version : 'En son sürüm';
+
+          metaEl.hidden = false;
+          metaEl.textContent = published
+            ? 'Yayın: ' + formatDate(published)
+            : '';
+
+          const detected = detectPlatform();
+          const primary = pickPrimary(assets, detected);
+
+          primaryEl.hidden = false;
+          if (primary) {
+            primaryEl.innerHTML =
+              '<a class="btn btn--primary" href="' +
+              primary.url +
+              '">İndir — ' +
+              platformLabel(primary.meta.os, primary.meta.arch) +
+              '</a>' +
+              '<p class="primary__hint">' +
+              primary.meta.kind +
+              (primary.size ? ' · ' + formatBytes(primary.size) : '') +
+              '</p>';
+          } else {
+            primaryEl.innerHTML =
+              '<p class="primary__hint">Platformunuz için otomatik öneri yok; aşağıdan seçin.</p>';
+          }
+
+          const order = { windows: 0, mac: 1, linux: 2 };
+          assets.sort(function (a, b) {
+            const ao = order[a.meta.os] != null ? order[a.meta.os] : 9;
+            const bo = order[b.meta.os] != null ? order[b.meta.os] : 9;
+            if (ao !== bo) return ao - bo;
+            return a.name.localeCompare(b.name);
+          });
+
+          listEl.innerHTML = assets
+            .map(function (a) {
+              const isPrimary = primary && a.url === primary.url;
+              return (
+                '<li class="platform-item' +
+                (isPrimary ? ' platform-item--active' : '') +
+                '">' +
+                '<div class="platform-item__info">' +
+                '<span class="platform-item__label">' +
+                a.meta.label +
+                '</span>' +
+                '<span class="platform-item__kind">' +
+                a.meta.kind +
+                (a.size ? ' · ' + formatBytes(a.size) : '') +
+                '</span>' +
+                '</div>' +
+                '<a class="btn btn--ghost" href="' +
+                a.url +
+                '">İndir</a>' +
+                '</li>'
+              );
+            })
+            .join('');
+        }
+
+        fetch(API, {
+          headers: { Accept: 'application/vnd.github+json' },
+        })
+          .then(function (res) {
+            if (res.status === 404) {
+              setError('Henüz yayın yok.');
+              return null;
+            }
+            if (!res.ok) {
+              throw new Error('HTTP ' + res.status);
+            }
+            return res.json();
+          })
+          .then(function (data) {
+            if (data) render(data);
+          })
+          .catch(function () {
+            setError('Sürüm bilgisi alınamadı.');
+          });
+      })();
+    </script>
+  </body>
+</html>
